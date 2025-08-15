@@ -1,11 +1,11 @@
-/* High-order components */
-export createField from './components/createField'
+/* HOCs */
+export { default as createField } from './components/createField';
 
 /* Components */
-export FormProvider from './components/FormProvider'
-export Form from './components/Form'
-export * as Field from './components/Field'
-export Condition from './components/Condition'
+export { default as FormProvider } from './components/FormProvider';
+export { default as Form } from './components/Form';
+export * as Field from './components/Field';
+export { default as Condition } from './components/Condition';
 
 /* Field presets */
-export * as fieldPresets from './fieldPresets'
+export * as fieldPresets from './fieldPresets';

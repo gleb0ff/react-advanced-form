@@ -1,64 +1,56 @@
 {
-  "name": "react-advanced-form",
-  "version": "1.7.2",
-  "description": "Functional reactive forms in React. Multi-layer validation, field grouping, reactive props, and much more.",
-  "main": "lib/index.js",
+  "name": "@gleb0ff/react-advanced-form",
+  "version": "1.8.0",
+  "description": "Fork of kettanaito/react-advanced-form. Functional reactive forms in React.",
   "license": "MIT",
-  "engines": {
-    "node": ">=6"
-  },
+  "author": "Artem Zakharchenko <kettanaito@gmail.com>",
+  "contributors": [
+    "Artem Zakharchenko <kettanaito@gmail.com>"
+  ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kettanaito/react-advanced-form.git"
+    "url": "git+https://github.com/gleb0ff/react-advanced-form.git"
   },
-  "author": {
-    "name": "Artem Zakharchenko",
-    "email": "kettanaito@gmail.com",
-    "url": "https://github.com/kettanaito"
-  },
+  "homepage": "https://github.com/gleb0ff/react-advanced-form#readme",
   "keywords": [
     "react",
     "form",
     "react-form",
     "react-advanced-form",
-    "raf",
-    "advanced",
-    "dynamic props",
-    "reactive props",
-    "rxprops",
-    "field group",
-    "field grouping",
-    "fields group",
-    "validation",
-    "form validation",
-    "field validation",
-    "async validation",
-    "multi-level validation"
+    "validation"
   ],
+  "main": "lib/index.js",
+  "files": [
+    "lib",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=12"
+  },
+  "module": "lib/index.esm.js",
+  "exports": {
+    ".": {
+      "import": "./lib/index.esm.js",
+      "require": "./lib/index.js",
+      "default": "./lib/index.esm.js",
+      "types": "./lib/index.d.ts"
+    }
+  },
   "scripts": {
     "start": "cross-env NODE_ENV=development webpack -w",
-    "storybook": "cross-env NODE_ENV=development start-storybook -p 6009 -s ./",
-    "flow": "flow",
-    "prettify": "prettier src/**/*.js cypress/integration/**/*.{js,jsx} examples/**/*.{js,jsx} --write",
-    "clean": "rimraf ./lib && exit 0",
+    "clean": "rimraf ./lib || exit 0",
     "build": "npm run clean && cross-env NODE_ENV=production webpack",
-    "build:storybook": "cross-env NODE_ENV=production build-storybook",
-    "test:unit": "cross-env NODE_ENV=production jest",
-    "cypress": "node_modules/.bin/cypress open -e envName=dev",
-    "cypress:cli": "node_modules/.bin/cypress run --spec 'cypress/integration/index.js' --browser chrome",
-    "test:integration:dev": "node_modules/.bin/cypress run -e envName=dev --spec cypress/integration/index.js --headed --no-exit",
-    "test:integration": "npm run cypress:cli",
-    "test": "npm run test:unit",
+    "test": "cross-env NODE_ENV=production jest",
     "prepublishOnly": "npm run build && npm test"
   },
-  "bundlesize": [
-    {
-      "path": "lib/index.js",
-      "maxSize": "90 kB"
-    }
-  ],
   "peerDependencies": {
-    "react": "^15.0.0"
+    "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0"
+  },
+  "dependencies": {
+    "hoist-non-react-statics": "^3.3.0",
+    "invariant": "^2.2.4",
+    "rxjs": "^7.8.2"
   },
   "devDependencies": {
     "@babel/core": "^7.4.4",
@@ -70,29 +62,19 @@
     "@babel/preset-env": "^7.4.4",
     "@babel/preset-flow": "^7.0.0",
     "@babel/preset-react": "^7.0.0",
-    "@cypress/webpack-preprocessor": "^4.0.3",
-    "@storybook/addon-actions": "^5.0.11",
-    "@storybook/addon-centered": "^5.0.11",
-    "@storybook/addon-links": "^5.0.11",
-    "@storybook/addon-options": "^5.0.11",
-    "@storybook/addons": "^5.0.11",
-    "@storybook/react": "^5.0.11",
     "babel-core": "^7.0.0-bridge.0",
     "babel-eslint": "^10.0.1",
     "babel-jest": "^24.7.1",
-    "babel-loader": "^8.0.5",
+    "babel-loader": "^10.0.0",
     "babel-plugin-ramda": "^2.0.0",
-    "bootstrap": "^4.3.1",
     "bundlesize": "^0.18.0",
     "chai": "^4.2.0",
     "create-react-class": "^15.6.3",
     "cross-env": "^5.2.0",
-    "cypress": "^3.2.0",
-    "eslint": "^5.16.0",
-    "eslint-import-resolver-webpack": "^0.12.0",
-    "eslint-loader": "^2.1.2",
-    "eslint-plugin-import": "^2.17.2",
-    "eslint-plugin-react": "^7.12.4",
+    "eslint": "^9.33.0",
+    "eslint-import-resolver-webpack": "^0.13.10",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-react": "^7.37.5",
     "flow": "^0.2.3",
     "jest": "^24.7.1",
     "ncp": "^2.0.0",
@@ -102,24 +84,24 @@
     "react": "^16.8.6",
     "react-datepicker": "^2.5.0",
     "react-dom": "^16.8.6",
-    "react-rangeslider": "^2.2.0",
     "react-select": "^2.4.3",
     "react-slider": "^0.11.2",
     "recompose": "^0.30.0",
     "regenerator-runtime": "^0.13.2",
     "rimraf": "^3.0.0",
     "start-server-and-test": "^1.9.0",
-    "storybook": "^1.0.0",
     "style-loader": "^1.0.0",
     "url": "^0.11.0",
-    "validator": "^11.0.0",
-    "webpack": "^4.30.0",
-    "webpack-bundle-analyzer": "^3.3.2",
-    "webpack-cli": "^3.3.1"
+    "webpack": "^5.101.2",
+    "webpack-cli": "^6.0.1"
   },
-  "dependencies": {
-    "hoist-non-react-statics": "^3.3.0",
-    "invariant": "^2.2.4",
-    "rxjs": "^6.5.1"
+  "bundlesize": [
+    {
+      "path": "lib/index.js",
+      "maxSize": "90 kB"
+    }
+  ],
+  "publishConfig": {
+    "access": "public"
   }
 }

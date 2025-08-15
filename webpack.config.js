@@ -1,7 +1,5 @@
 const path = require('path')
 const webpack = require('webpack')
-const BundleAnalyzerPlugin = require('webpack-bundle-analyzer')
-  .BundleAnalyzerPlugin
 
 /* Environment */
 const nodeEnv = process.env.NODE_ENV || 'development'
@@ -29,15 +27,13 @@ module.exports = {
      */
     globalObject: `typeof self !== 'undefined' ? self : this`,
   },
-  optimization: {
-    minimize: false,
-  },
+  optimization: { minimize: true },
+  performance: { hints: false },
   plugins: [
     new webpack.DefinePlugin({
       'process.env.BABEL_ENV': JSON.stringify(nodeEnv),
-    }),
-    // new BundleAnalyzerPlugin(),
-  ].filter(Boolean),
+    })
+  ],
   module: {
     rules: [
       {
@@ -47,12 +43,7 @@ module.exports = {
         use: [
           {
             loader: 'babel-loader',
-            options: {
-              cacheDirectory: DEVELOPMENT,
-            },
-          },
-          {
-            loader: 'eslint-loader',
+            options: { cacheDirectory: DEVELOPMENT },
           },
         ],
       },
