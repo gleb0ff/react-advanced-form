@@ -1,6 +1,6 @@
 {
   "name": "@gleb0ff/react-advanced-form",
-  "version": "1.8.4",
+  "version": "1.8.5",
   "description": "Fork of kettanaito/react-advanced-form. Functional reactive forms in React.",
   "license": "MIT",
   "author": "Artem Zakharchenko <kettanaito@gmail.com>",
@@ -24,11 +24,13 @@
   "files": [
     "lib",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "index.d.ts"
   ],
   "engines": {
     "node": ">=12"
   },
+  "types": "./index.d.ts",
   "exports": {
     ".": {
       "types": "./index.d.ts",
