@@ -1,6 +1,6 @@
 {
   "name": "@gleb0ff/react-advanced-form",
-  "version": "1.8.0",
+  "version": "1.8.4",
   "description": "Fork of kettanaito/react-advanced-form. Functional reactive forms in React.",
   "license": "MIT",
   "author": "Artem Zakharchenko <kettanaito@gmail.com>",
@@ -20,6 +20,7 @@
     "validation"
   ],
   "main": "lib/index.js",
+  "module": "lib/index.js",
   "files": [
     "lib",
     "LICENSE",
@@ -28,13 +29,12 @@
   "engines": {
     "node": ">=12"
   },
-  "module": "lib/index.esm.js",
   "exports": {
     ".": {
-      "import": "./lib/index.esm.js",
+      "types": "./index.d.ts",
+      "import": "./lib/index.js",
       "require": "./lib/index.js",
-      "default": "./lib/index.esm.js",
-      "types": "./lib/index.d.ts"
+      "default": "./lib/index.js"
     }
   },
   "scripts": {
