@@ -1,11 +1,21 @@
 {
-  "trailingComma": "all",
-  "bracketSpacing": true,
-  "arrowParens": "always",
   "singleQuote": true,
-  "useTabs": false,
+  "trailingComma": "all",
   "semi": false,
+  "endOfLine": "lf",
+  "printWidth": 120,
+  "useTabs": false,
+  "bracketSpacing": true,
   "tabWidth": 2,
-  "jsxBracketSameLine": false,
-  "printWidth": 80
+  "bracketSameLine": false,
+  "overrides": [
+    {
+      "files": ["**/*.css", "**/*.scss", "**/*.html"],
+      "options": {
+        "singleQuote": false
+      }
+    }
+  ]
 }
+
+

@@ -22,12 +22,23 @@ export default async function handleFieldChange(
   const eventInstance = event && (event.nativeEvent || event)
   const { isForcedUpdate } = eventInstance || {}
   const { controlled: isControlled, onChange } = fieldProps
+  const valueKey = fieldProps.valuePropName || 'value'
+
+  // Вычисляем безопасные prev/next один раз
+  const rawNextValue = Object.prototype.hasOwnProperty.call(arguments[0], 'nextValue')
+    ? nextValue
+    : (event?.currentTarget?.[valueKey] ?? event?.target?.[valueKey])
+  const safeNextValue = rawNextValue == null ? '' : rawNextValue
+
+  const rawPrevValue = Object.prototype.hasOwnProperty.call(arguments[0], 'prevValue')
+    ? prevValue
+    : fieldProps[valueKey]
+  const safePrevValue = rawPrevValue == null ? '' : rawPrevValue
 
   if (!isForcedUpdate && isControlled) {
     invariant(
       onChange,
-      'Cannot update the controlled field `%s`. Expected custom `onChange` handler, ' +
-        'but got: %s.',
+      'Cannot update the controlled field `%s`. Expected custom `onChange` handler, ' + 'but got: %s.',
       fieldProps.fieldPath.join('.'),
       onChange,
     )
@@ -36,8 +47,8 @@ export default async function handleFieldChange(
       onChange,
       {
         event,
-        nextValue,
-        prevValue,
+        nextValue: safeNextValue,
+        prevValue: safePrevValue,
         fieldProps,
         fields,
         form,
@@ -51,7 +62,7 @@ export default async function handleFieldChange(
   /* Update field's value */
   const updatedFieldProps = R.compose(
     recordUtils.setPristine(false),
-    recordUtils.setValue(nextValue),
+    recordUtils.setValue(safeNextValue),
     recordUtils.resetValidityState,
     recordUtils.resetValidationState,
   )(fieldProps)
@@ -77,9 +88,7 @@ export default async function handleFieldChange(
    * performed immediately, while for typing the value it must be debounced.
    */
   const shouldDebounce = !!prevValue && !!nextValue
-  const appropriateValidation = shouldDebounce
-    ? fieldProps.debounceValidate
-    : validateField
+  const appropriateValidation = shouldDebounce ? fieldProps.debounceValidate : validateField
 
   const validatedFieldProps = await appropriateValidation({
     chain: [validateSync],

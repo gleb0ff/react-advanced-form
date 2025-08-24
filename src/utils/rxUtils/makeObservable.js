@@ -1,50 +1,39 @@
 import * as R from 'ramda'
-import { Observable } from 'rxjs/internal/Observable'
 import { fromEvent } from 'rxjs/internal/observable/fromEvent'
 import camelize from '../camelize'
 import * as recordUtils from '../recordUtils'
-import flushFieldRefs from '../flushFieldRefs'
 import createPropsObserver from './createPropsObserver'
+import flushFieldRefs from '../flushFieldRefs'
 
 /**
- * Returns the formatted references in a { [fieldPath]: props } format.
- * @param {string[]} refs
- * @returns {Object}
+ * refs: Array<Array<string>>
+ * Пример: [ ['password','value'], ['login','type'] ]
+ * Превращаем в { 'password': ['value'], 'login': ['type'] }
  */
 const formatRefs = (fieldsRefs) => {
-  return fieldsRefs.reduce((formattedRef, ref) => {
-    if (ref.length < 2) {
-      return formattedRef
-    }
+  return (fieldsRefs || []).reduce((acc, ref) => {
+    // ожидаем массив с минимум двумя элементами: [...fieldPath, propName]
+    if (!Array.isArray(ref) || ref.length < 2) return acc
 
-    /* Assume the last referenced key is always a prop name */
-    const fieldPath = ref.slice(0, ref.length - 1)
+    const fieldPath = ref.slice(0, -1)
     const joinedFieldPath = fieldPath.join('.')
-    const propName = ref.slice(ref.length - 1)
-    const prevPropsList = R.propOr([], joinedFieldPath, formatRefs)
-    const nextPropsList = prevPropsList.concat(propName)
+    if (!joinedFieldPath) return acc
 
-    return R.assoc(joinedFieldPath, nextPropsList, formattedRef)
+    const rawPropName = ref[ref.length - 1]
+    const propName = typeof rawPropName === 'string' ? rawPropName : String(rawPropName || '')
+    if (!propName) return acc
+
+    const prevPropsList = acc[joinedFieldPath] || []
+    acc[joinedFieldPath] = prevPropsList.includes(propName) ? prevPropsList : prevPropsList.concat(propName)
+
+    return acc
   }, {})
 }
 
 /**
- * Shorthand: Creates a props change observer with the provided arguments.
- * @param {string} targetPath
- * @param {string[]} targetProps
- * @param {string} rxPropName
- * @param {Object} fieldProps
- * @param {Object} form
- * @param {Object} observerOptions
- * @returns {Subscription}
+ * Shorthand
  */
-function createObserver({
-  targetFieldPath,
-  props,
-  form,
-  subscribe,
-  observerOptions,
-}) {
+function createObserver({ targetFieldPath, props, form, subscribe, observerOptions }) {
   return createPropsObserver({
     targetFieldPath,
     props,
@@ -56,95 +45,55 @@ function createObserver({
     },
     eventEmitter: form.eventEmitter,
     ...observerOptions,
-  }).subscribe(subscribe)
+  }).subscribe(subscribe) // возвращается Subscription
 }
 
 /**
- * Makes the provided method observable, subscribing to props changes
- * of the referenced fields in the method.
- * @param {Function} method
- * @param {Object} methodArgs
- * @param {Options} options
+ * Делает метод «наблюдаемым»
  */
-export default function makeObservable(
-  method,
-  methodArgs,
-  { initialCall = false, subscribe, observerOptions },
-) {
+export default function makeObservable(method, methodArgs, { initialCall = false, subscribe, observerOptions }) {
   const { fieldProps: subscriberProps, fields, form } = methodArgs
-  const { refs, initialValue } = flushFieldRefs(method, methodArgs)
+
+  const flushed = flushFieldRefs(method, methodArgs)
+  const refs = Array.isArray(flushed?.refs) ? flushed.refs : []
+  const { initialValue } = flushed || {}
 
   const formattedTargetRefs = formatRefs(refs)
 
   R.toPairs(formattedTargetRefs).forEach(([joinedFieldPath, props]) => {
-    /**
-     * @todo Omit the keys glue.
-     */
-    const targetFieldPath = joinedFieldPath.split('.')
+    const targetFieldPath = joinedFieldPath ? joinedFieldPath.split('.') : []
 
-    /**
-     * When the delegated reactive prop resolver executes, we need
-     * to determine whether the subscriber field validation is needed.
-     * Validate the subscriber when it has any value, otherwise do not
-     * validate to prevent invalid fields at initial form render.
-     */
+    // если путь пустой — пропускаем
+    if (targetFieldPath.length === 0) return
+
+    // валидируем подписчика только когда у него есть значение
     const shouldValidate = !!recordUtils.getValue(subscriberProps)
     const isTargetRegistered = R.path(targetFieldPath, fields)
 
     if (isTargetRegistered) {
-      const subscription = createObserver({
-        targetFieldPath,
-        props,
-        form,
-        subscribe,
-        observerOptions,
-      })
-
-      if (initialCall) {
-        subscription.next({
+      if (initialCall && typeof subscribe === 'function') {
+        subscribe({
           nextTargetRecord: subscriberProps,
           shouldValidate,
         })
       }
 
-      return {
-        refs,
-        initialValue,
-      }
+      return
     }
 
-    /**
-     * Create a delegated target field subscription.
-     * When the target field is not yet registred, create an observable
-     * to listen for its registration event. Since the flushed refs
-     * already contain the referenced props, there is no need to analyze
-     * the resolver function again, just create a subscription.
-     */
     const fieldRegisteredEvent = camelize(...targetFieldPath, 'registered')
-    const delegatedSubscription = fromEvent(
-      form.eventEmitter,
-      fieldRegisteredEvent,
-    ).subscribe((delegatedFieldProps) => {
-      /* Get rid of the delegated subscription since it's no longer relevant */
-      delegatedSubscription.unsubscribe()
+    const delegated = fromEvent(form.eventEmitter, fieldRegisteredEvent).subscribe((delegatedFieldProps) => {
+      delegated.unsubscribe()
+      const sub = createObserver({ targetFieldPath, props, form, subscribe, observerOptions })
 
-      const subscription = createObserver({
-        targetFieldPath,
-        props,
-        form,
-        subscribe,
-        observerOptions,
-      })
-
-      return subscription.next({
-        nextTargetRecord: delegatedFieldProps,
-        shouldValidate,
-      })
+      if (typeof subscribe === 'function') {
+        subscribe({
+          nextTargetRecord: delegatedFieldProps,
+          shouldValidate,
+        })
+      }
     })
   })
 
-  return {
-    refs,
-    initialValue,
-  }
+  return { refs, initialValue }
 }

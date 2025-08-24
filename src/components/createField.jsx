@@ -7,15 +7,7 @@ import * as R from 'ramda'
 import React from 'react'
 import PropTypes from 'prop-types'
 import hoistNonReactStatics from 'hoist-non-react-statics'
-import {
-  isset,
-  camelize,
-  debounce,
-  getComponentName,
-  recordUtils,
-  rxUtils,
-  warning,
-} from '../utils'
+import { isset, camelize, debounce, getComponentName, recordUtils, rxUtils, warning } from '../utils'
 
 /* Default options for `connectField()` HOC */
 const defaultOptions = {
@@ -58,18 +50,14 @@ const defaultOptions = {
  * @returns {string?}
  */
 const getInitialValue = (fieldPath, fieldProps, initialValues, hocOptions) => {
-  return (
-    fieldProps.initialValue ||
-    (initialValues && R.path(fieldPath, initialValues)) ||
-    hocOptions.initialValue
-  )
+  return fieldProps.initialValue || (initialValues && R.path(fieldPath, initialValues)) || hocOptions.initialValue
 }
 
 export default function connectField(options) {
   const hocOptions = { ...defaultOptions, ...options }
   const { valuePropName } = hocOptions
 
-  return function(WrappedComponent) {
+  return function (WrappedComponent) {
     class Field extends React.Component {
       static displayName = `Field.${getComponentName(WrappedComponent)}`
 
@@ -115,15 +103,8 @@ export default function connectField(options) {
         const { reactiveProps, prunedProps } = rxUtils.getRxProps(directProps)
 
         /* Set value and initial value */
-        const initialValue = getInitialValue(
-          __fieldPath,
-          directProps,
-          form.props.initialValues,
-          hocOptions,
-        )
-        const registeredValue = isset(contextValue)
-          ? contextValue
-          : value || initialValue
+        const initialValue = getInitialValue(__fieldPath, directProps, form.props.initialValues, hocOptions)
+        const registeredValue = isset(contextValue) ? contextValue : isset(value) ? value : initialValue
 
         const initialFieldProps = {
           ...prunedProps,
@@ -139,9 +120,9 @@ export default function connectField(options) {
            * inside "recordUtils.reset()".
            */
           initialValue: initialValue || registeredValue,
-          controlled: prunedProps.hasOwnProperty(
-            'value',
-          ) /** @todo Checkboxes are always uncontrolled */,
+          controlled:
+            Object.prototype.hasOwnProperty.call(prunedProps, valuePropName) &&
+            prunedProps[valuePropName] !== undefined,
           required: prunedProps.required,
           reactiveProps,
 
@@ -196,6 +177,13 @@ export default function connectField(options) {
           },
         })
 
+        console.log('[RAF] register', this.__fieldPath.join('.'), {
+          controlled: initialFieldProps.controlled,
+          initialValue,
+          registeredValue,
+          prunedHasValue: Object.prototype.hasOwnProperty.call(prunedProps, valuePropName),
+          prunedValue: prunedProps[valuePropName],
+        })
         return fieldRecord
       }
 
@@ -253,11 +241,7 @@ export default function connectField(options) {
         const { props: prevProps, contextProps: prevContextProps } = this
         this.contextProps = nextContextProps
 
-        const propsChangeEvent = camelize(
-          ...nextContextProps.fieldPath,
-          'props',
-          'change',
-        )
+        const propsChangeEvent = camelize(...nextContextProps.fieldPath, 'props', 'change')
 
         this.context.form.eventEmitter.emit(propsChangeEvent, {
           prevTargetProps: prevProps,
@@ -271,10 +255,7 @@ export default function connectField(options) {
        * Deletes the field's record upon unmounting.
        */
       componentWillUnmount() {
-        this.context.form.eventEmitter.emit(
-          'fieldUnregister',
-          this.contextProps,
-        )
+        this.context.form.eventEmitter.emit('fieldUnregister', this.contextProps)
       }
 
       /**
@@ -282,6 +263,7 @@ export default function connectField(options) {
        * @param {ReactComponent} Component
        */
       getInnerRef = (Component) => {
+        console.log('[RAF] getInnerRef', this.__fieldPath.join('.'), Component)
         /**
          * Store inner component reference internally.
          * This way inner reference is accessible by custom field reference like
@@ -314,6 +296,7 @@ export default function connectField(options) {
        * @param {Event} event
        */
       handleFocus = (event) => {
+        console.log('[RAF] focus', this.__fieldPath.join('.'))
         this.context.form.eventEmitter.emit('fieldFocus', {
           event,
           fieldProps: this.contextProps,
@@ -327,23 +310,34 @@ export default function connectField(options) {
        * @param {any} prevValue
        */
       handleChange = (args) => {
+        const { event, nextValue: customNextValue, prevValue: customPrevValue } = args
         const {
-          event,
-          nextValue: customNextValue,
-          prevValue: customPrevValue,
-        } = args
-        const {
-          contextProps,
           context: { form },
         } = this
 
-        const nextValue = args.hasOwnProperty('nextValue')
-          ? customNextValue
-          : event.currentTarget[valuePropName]
+        // 1) Гарантируем наличие contextProps (бывает пусто под React 18)
+        let contextProps = this.contextProps
+        if (!contextProps) {
+          const fallbackFromState = R.path(this.__fieldPath, this.context.fields)
+          contextProps = fallbackFromState || {
+            name: this.props.name,
+            fieldPath: this.__fieldPath,
+            valuePropName: (this.contextProps && this.contextProps.valuePropName) || 'value',
+            value: '',
+          }
+          this.contextProps = contextProps
+        }
 
-        const prevValue = args.hasOwnProperty('prevValue')
+        // 2) Безопасно достаём next/prev
+        const key = contextProps.valuePropName || 'value'
+        const nextValue = Object.prototype.hasOwnProperty.call(args, 'nextValue')
+          ? customNextValue
+          : (event?.currentTarget?.[key] ?? event?.target?.[key] ?? '')
+        const prevValue = Object.prototype.hasOwnProperty.call(args, 'prevValue')
           ? customPrevValue
-          : contextProps[valuePropName]
+          : contextProps && contextProps[key]
+
+        console.log('[RAF] change', this.__fieldPath.join('.'), { prevValue, nextValue })
 
         form.eventEmitter.emit('fieldChange', {
           event,
@@ -366,7 +360,7 @@ export default function connectField(options) {
 
       render() {
         const { props, contextProps } = this
-        
+
         /* Render null and log warning in case of formless field */
         if (!contextProps) {
           warning(
@@ -374,7 +368,7 @@ export default function connectField(options) {
             'Failed to render the field `%s`: expected to be a child ' +
               'of a Form component. Please render fields as children of ' +
               'Form, since formless fields are not currently supported.',
-              this.__fieldPath.join('.'),
+            this.__fieldPath.join('.'),
           )
           return null
         }
@@ -382,9 +376,8 @@ export default function connectField(options) {
         /* Reference to the enforced props from the HOC options */
         const enforcedProps = hocOptions.enforceProps({ props, contextProps })
         const { valuePropName } = contextProps
-        const value = contextProps.controlled
-          ? props[valuePropName] || ''
-          : contextProps[valuePropName]
+        const recordValue = recordUtils.getValue(contextProps) // надёжнее, чем прямой доступ
+        const value = contextProps.controlled ? (props[valuePropName] ?? '') : (recordValue ?? '')
 
         /* Props to assign to the field component directly (input, select, etc.) */
         const fieldProps = {
@@ -405,9 +398,15 @@ export default function connectField(options) {
           onChange: (event) => this.handleChange({ event }),
           onBlur: this.handleBlur,
         }
+        console.log('[RAF] render', contextProps.name, {
+          controlled: contextProps.controlled,
+          value,
+          focused: contextProps.focused,
+        })
 
         return (
           <WrappedComponent
+            key={contextProps.name}
             {...props}
             fieldProps={fieldProps}
             fieldState={contextProps}

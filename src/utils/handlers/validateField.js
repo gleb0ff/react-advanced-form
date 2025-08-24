@@ -1,25 +1,42 @@
 import * as R from 'ramda'
+import * as recordUtils from '../recordUtils'
 import validate from '../validation'
 import reflectValidationResult from '../validation/reflectors/reflectValidationResult'
 
 /**
- * Validates the given field and returns the fieldProps with validation reflected.
+ * Валидируем поле и возвращаем fieldProps с отражённым результатом.
+ * Если движок валидации не вернул осмысленного результата (expected == null),
+ * то для required-полей вычисляем expected сами: expected = !!value.
  */
 export default async function validateField(resolverArgs) {
   const { fieldProps } = resolverArgs
-  const validationResult = await validate(resolverArgs)
+  let validationResult
 
-  if (validationResult.expected === null) {
-    /**
-     * When a field needed no validation, return its state as-is
-     * but set "expected" to "true" since its default value is "false",
-     * to prevent field from blocking the submit.
-     *
-     * @todo Maybe all fields should be treated as "expected", since
-     * their validation necessity is defined by "validatedABC" props,
-     * and will re-write the value of "expected" when needed.
-     */
-    return R.assoc('expected', true, fieldProps)
+  try {
+    validationResult = await validate(resolverArgs)
+  } catch (_) {
+    // не роняем поток валидации
+    validationResult = null
+  }
+
+  // Если валидация ничего не вернула или сказала «не требовалась»
+  if (!validationResult || validationResult.expected == null) {
+    const required = !!fieldProps.required
+    const value = recordUtils.getValue(fieldProps)
+    const expected = required ? !!value : true
+    const errors = required && !expected ? ['required'] : null
+
+    const base = R.mergeDeepRight(fieldProps, {
+      expected,
+      validated: true,
+      validatedSync: true,
+      // touched: true,
+      errors,
+      valid: expected && !!value,
+      invalid: !expected,
+    })
+
+    return base
   }
 
   return reflectValidationResult(resolverArgs)(validationResult)

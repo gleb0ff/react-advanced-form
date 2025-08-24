@@ -78,22 +78,12 @@ export const updateCollectionWith = R.curry((fieldProps, collection) => {
  * @param {Object} fieldProps
  * @returns {any}
  */
+
+// безопасный геттер: не assert-ит и не падает
 export const getValue = (fieldProps) => {
-  const { fieldPath, valuePropName } = fieldProps
-
-  invariant(
-    fieldPath,
-    'Failed to get field value: provided object is not a field: %s',
-    Object.keys(fieldProps).join(),
-  )
-
-  invariant(
-    valuePropName,
-    'Failed to get value of the `%s`: field has no `valuePropName` property.',
-    fieldPath && fieldPath.join('.'),
-  )
-
-  return R.prop(valuePropName, fieldProps)
+  if (!fieldProps || typeof fieldProps !== 'object') return undefined
+  const key = fieldProps.valuePropName || 'value'
+  return fieldProps[key]
 }
 
 /**
@@ -107,10 +97,7 @@ export const setValue = R.curry((nextValueGetter, fieldProps) => {
   const { fieldPath, valuePropName } = fieldProps
 
   /* Accept "nextValue" as a function to be able to make "setValue" composable */
-  const nextValue =
-    typeof nextValueGetter === 'function'
-      ? nextValueGetter(fieldProps)
-      : nextValueGetter
+  const nextValue = typeof nextValueGetter === 'function' ? nextValueGetter(fieldProps) : nextValueGetter
 
   invariant(
     valuePropName,
@@ -138,9 +125,7 @@ export const hasValue = (fieldProps) => {
  */
 export const setErrors = R.curry((errors, fieldProps) => {
   /* Allow explicit "null" for empty "errors" value */
-  return typeof errors !== 'undefined'
-    ? R.assoc('errors', errors && enforceArray(errors), fieldProps)
-    : fieldProps
+  return typeof errors !== 'undefined' ? R.assoc('errors', errors && enforceArray(errors), fieldProps) : fieldProps
 })
 
 /**

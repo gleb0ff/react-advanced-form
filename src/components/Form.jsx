@@ -8,25 +8,14 @@ import { bufferTime } from 'rxjs/internal/operators/bufferTime'
 import { filter } from 'rxjs/internal/operators/filter'
 
 /* Internal modules */
-import {
-  defaultDebounceTime,
-  ValidationRulesPropType,
-  ValidationMessagesPropType,
-} from './FormProvider'
-import {
-  isset,
-  camelize,
-  dispatch,
-  evolveP,
-  recordUtils,
-  fieldUtils,
-  formUtils,
-  rxUtils,
-} from '../utils'
+import { defaultDebounceTime, ValidationRulesPropType, ValidationMessagesPropType } from './FormProvider'
+import { isset, camelize, dispatch, evolveP, recordUtils, fieldUtils, formUtils, rxUtils } from '../utils'
+
 import * as handlers from '../utils/handlers'
 import validate from '../utils/handlers/validateField'
 import getLeavesWhich from '../utils/getLeavesWhich'
 import deriveDeepWith from '../utils/deriveDeepWith'
+import createRuleResolverArgs from '../utils/validation/createRuleResolverArgs'
 
 /**
  * Binds the component's reference to the function's context and calls
@@ -115,19 +104,17 @@ export default class Form extends React.Component {
 
     /* Field events observerables */
     fromEvent(eventEmitter, 'fieldsDidUpdate').subscribe(this.fieldsDidUpdate)
-    fromEvent(eventEmitter, 'fieldRegister')
-      .pipe(bufferTime(50))
-      .subscribe((pendingFields) => pendingFields.forEach(this.registerField))
+    fromEvent(eventEmitter, 'fieldRegister').subscribe((payload) => {
+      const list = Array.isArray(payload) ? payload : [payload]
+      list.forEach(this.registerField)
+    })
 
     fromEvent(eventEmitter, 'fieldFocus').subscribe(this.handleFieldFocus)
     fromEvent(eventEmitter, 'fieldChange').subscribe(this.handleFieldChange)
     fromEvent(eventEmitter, 'fieldBlur').subscribe(this.handleFieldBlur)
     fromEvent(eventEmitter, 'validateField').subscribe(this.validateField)
     fromEvent(eventEmitter, 'fieldUnregister')
-      .pipe(
-        bufferTime(50),
-        filter(R.complement(R.isEmpty)),
-      )
+      .pipe(bufferTime(50), filter(R.complement(R.isEmpty)))
       .subscribe(this.unregisterFields)
 
     this.state = {
@@ -144,8 +131,7 @@ export default class Form extends React.Component {
     const { rules: nextProviderRules } = nextContext
 
     const shouldUpdateState = !(
-      R.equals(nextFormRules, prevFormRules) &&
-      R.equals(nextProviderRules, prevProviderRules)
+      R.equals(nextFormRules, prevFormRules) && R.equals(nextProviderRules, prevProviderRules)
     )
 
     if (shouldUpdateState) {
@@ -159,12 +145,7 @@ export default class Form extends React.Component {
        */
       const nextFields = R.compose(
         fieldUtils.stitchFields,
-        R.map(
-          R.compose(
-            recordUtils.resetValidationState,
-            recordUtils.resetValidityState,
-          ),
-        ),
+        R.map(R.compose(recordUtils.resetValidationState, recordUtils.resetValidityState)),
         fieldUtils.flattenFields,
       )(this.state.fields)
 
@@ -183,12 +164,7 @@ export default class Form extends React.Component {
    * Wraps a given function, ensuring its invocation only when the payload
    * of that function has a field that is a part of the form's fields.
    */
-  withRegisteredField = (func) => {
-    return (args) => {
-      const includesField = R.path(args.fieldProps.fieldPath, this.state.fields)
-      return includesField && func(args)
-    }
-  }
+  withRegisteredField = (func) => (args) => func(args)
 
   /**
    * Registers a new field in the form's state.
@@ -245,18 +221,7 @@ export default class Form extends React.Component {
         /**
          * @todo Verify that this replaces the previous logic.
          */
-        R.compose(
-          this.updateFieldsWith,
-          R.mergeDeepRight(nextTargetRecord),
-        )(changedProps)
-
-        // this.updateField({
-        //   fieldPath,
-        //   update: (fieldProps) =>
-        //     Object.keys(changedProps).reduce((acc, propName) => {
-        //       return acc.set(propName, changedProps[propName])
-        //     }, fieldProps),
-        // })
+        R.compose(this.updateFieldsWith, R.mergeDeepRight(nextTargetRecord))(changedProps)
       })
 
     /**
@@ -334,10 +299,7 @@ export default class Form extends React.Component {
   updateFieldsWith = (nextFieldState) => {
     const { fields: prevFields } = this.state
     const prevFieldState = R.path(nextFieldState.fieldPath, prevFields)
-    const nextFields = recordUtils.updateCollectionWith(
-      nextFieldState,
-      prevFields,
-    )
+    const nextFields = recordUtils.updateCollectionWith(nextFieldState, prevFields)
 
     return new Promise((resolve, reject) => {
       try {
@@ -371,15 +333,19 @@ export default class Form extends React.Component {
    * possible to diff required props and dispatch respective side-effects.
    */
   fieldsDidUpdate = ({ prevFieldState, nextFieldState, nextFields }) => {
-    const prevValue = recordUtils.getValue(prevFieldState)
-    const nextValue = recordUtils.getValue(nextFieldState)
+    const prevValue0 = recordUtils.getValue(prevFieldState)
+    const nextValue0 = recordUtils.getValue(nextFieldState)
+    const prevValue = prevValue0 == null ? '' : prevValue0
+    const nextValue = nextValue0 == null ? '' : nextValue0
 
-    if (!R.equals(prevValue, nextValue)) {
-      const { fieldPath, onChange } = nextFieldState
+    const fp = nextFieldState || prevFieldState
+    if (fp) {
+      const { fieldPath, onChange } = fp
+      const lookedUp = fieldPath ? R.path(fieldPath, nextFields) : undefined
       dispatch(onChange, {
         prevValue,
         nextValue,
-        fieldProps: R.path(fieldPath, nextFields),
+        fieldProps: lookedUp || fp,
         fields: nextFields,
         form: this,
       })
@@ -439,30 +405,38 @@ export default class Form extends React.Component {
    * @param {mixed} prevValue
    * @param {mixed} nextValue
    */
+
   handleFieldChange = this.withRegisteredField(async (args) => {
-    const { fields, dirty } = this.state
+    const { dirty } = this.state
+    const { fieldProps } = args
+    const valueProp = fieldProps?.valuePropName || 'value'
+    const e = args.event
 
-    const nextFieldProps = await handlers.handleFieldChange(
-      args,
-      fields,
-      this,
-      {
-        onUpdateValue: this.updateFieldsWith,
-      },
-    )
+    // Получаем nextValue
+    const nextValue = Object.prototype.hasOwnProperty.call(args, 'nextValue')
+      ? args.nextValue
+      : (e?.currentTarget?.[valueProp] ?? e?.target?.[valueProp] ?? '')
 
-    /**
-     * Change handler for controlled fields does not return the next field props
-     * record, therefore, need to explicitly ensure the payload was returned.
-     */
-    if (nextFieldProps) {
-      await this.updateFieldsWith(nextFieldProps)
-    }
+    //  Готовим новую запись поля на базе ТЕКУЩЕЙ записи (не через path)
+    const updatedFieldProps = require('ramda').compose(
+      require('../utils/recordUtils').setPristine(false),
+      require('../utils/recordUtils').setValue(nextValue),
+      require('../utils/recordUtils').resetValidityState,
+      require('../utils/recordUtils').resetValidationState,
+    )(fieldProps)
 
-    /* Mark form as dirty if it's not already */
-    if (!dirty) {
-      this.handleFirstChange(args)
-    }
+    //  Пишем запись в state
+    console.log('[WRITE]', fieldProps.fieldPath.join('.'), '=>', nextValue)
+    await this.updateFieldsWith(updatedFieldProps)
+
+    //Синхронно валидируем это поле (без debounce)
+    await require('../utils/handlers/validateField').default({
+      chain: [require('../utils/validation/validateSync').default],
+      fieldProps: updatedFieldProps,
+      form: this,
+    })
+
+    if (!dirty) this.handleFirstChange(args)
   })
 
   /**
@@ -472,11 +446,7 @@ export default class Form extends React.Component {
    */
   handleFieldBlur = this.withRegisteredField(async (args) => {
     const { fields } = this.state
-    const { nextFieldProps } = await handlers.handleFieldBlur(
-      args,
-      fields,
-      this,
-    )
+    const { nextFieldProps } = await handlers.handleFieldBlur(args, fields, this)
 
     this.updateFieldsWith(nextFieldProps)
   })
@@ -496,9 +466,7 @@ export default class Form extends React.Component {
 
     const fields = explicitFields || this.state.fields
 
-    let fieldProps = forceProps
-      ? explicitFieldProps
-      : R.path(explicitFieldProps.fieldPath, fields)
+    let fieldProps = forceProps ? explicitFieldProps : R.path(explicitFieldProps.fieldPath, fields)
 
     fieldProps = fieldProps || explicitFieldProps
 
@@ -531,35 +499,71 @@ export default class Form extends React.Component {
     const { fields } = this.state
     const { onInvalid } = this.props
 
-    const flattenedFields = getLeavesWhich(
-      R.allPass([R.is(Object), R.has('fieldPath'), predicate]),
-      fields,
-    )
+    //  Собираем листья
+    const flattenedFields = getLeavesWhich(R.allPass([R.is(Object), R.has('fieldPath'), predicate]), fields)
 
-    /* Map pending field validations into a list */
-    const pendingValidations = flattenedFields.map((fieldProps) =>
-      this.validateField({ fieldProps }),
-    )
+    //  Параллельно прогоняем через validateField (если там что-то есть)
+    const results = await Promise.all(flattenedFields.map((fieldProps) => this.validateField({ fieldProps })))
 
-    /* Await for all validation promises to resolve before returning */
-    const validatedFields = await Promise.all(pendingValidations)
-    const isFormValid = validatedFields.every(R.propEq('expected', true))
+    //  Для КАЖДОГО поля вычисляем required, даже если он реактивный
+    const offenders = []
+    for (let i = 0; i < flattenedFields.length; i) {
+      const field = flattenedFields[i]
+      const result = results[i] || null
+      const snap = result || field
+
+      const value = recordUtils.getValue(snap)
+
+      let required = snap.required
+      if (typeof required === 'function') {
+        try {
+          const args = createRuleResolverArgs({
+            fieldProps: snap,
+            fields: this.state.fields,
+            form: this,
+          })
+          required = !!dispatch(required, args)
+        } catch {
+          required = !!snap.required
+        }
+      } else {
+        required = !!required
+      }
+
+      // expected: если рантайм дал boolean — берём его; иначе считаем сами
+      const expected = typeof (result && result.expected) === 'boolean' ? result.expected : required ? !!value : true
+
+      const errors = (result && result.errors) || (required && !expected ? ['required'] : null)
+
+      if (expected === false) {
+        offenders.push({ snap, errors })
+      }
+    }
+
+    // Обновим state у завалившихся
+
+    if (offenders.length) {
+      await Promise.all(
+        offenders.map(({ snap, errors }) =>
+          this.updateFieldsWith({
+            ...snap,
+            expected: false,
+            errors,
+            validated: true,
+            validatedSync: true,
+            valid: false,
+            invalid: true,
+            touched: true,
+          }),
+        ),
+      )
+    }
+
+    const isFormValid = offenders.length === 0
 
     if (!isFormValid && onInvalid) {
-      const { fields: nextFields } = this.state
-
-      /* Get a map of invalid fields */
-      const invalidFields = R.filter(
-        R.propEq('expected', false),
-        validatedFields,
-      )
-
-      /* Call custom callback */
-      dispatch(onInvalid, {
-        invalidFields,
-        fields: nextFields,
-        form: this,
-      })
+      const invalidFields = offenders.map(({ snap }) => snap)
+      dispatch(onInvalid, { invalidFields, fields: this.state.fields, form: this })
     }
 
     return isFormValid
@@ -606,9 +610,7 @@ export default class Form extends React.Component {
        * regardless of their required status. That is to prevent having
        * invalid empty required fields after reset.
        */
-      this.validate(
-        R.allPass([R.has('value'), R.complement(R.propEq('value', ''))]),
-      )
+      this.validate(R.allPass([R.has('value'), R.complement(R.propEq('value', ''))]))
 
       /* Callback method to reset controlled fields */
       dispatch(this.props.onReset, {
@@ -698,12 +700,7 @@ export default class Form extends React.Component {
     }
 
     const { fields } = this.state
-    const {
-      onSubmitStart,
-      onSubmitted,
-      onSubmitFailed,
-      onSubmitEnd,
-    } = this.props
+    const { onSubmitStart, onSubmitted, onSubmitFailed, onSubmitEnd } = this.props
 
     /* Serialize the fields */
     const serialized = this.serialize()

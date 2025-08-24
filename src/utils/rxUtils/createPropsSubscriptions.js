@@ -12,64 +12,56 @@ import makeObservable from './makeObservable'
  */
 export default function createPropsSubscriptions({ fieldProps, fields, form }) {
   const { reactiveProps } = fieldProps
+  if (!reactiveProps) return
 
-  if (!reactiveProps) {
-    return
-  }
-
-  const { fieldPath: subscriberFieldPath } = fieldProps
-  const resolverArgs = createRuleResolverArgs({ fieldProps, fields, form })
+  const subscriberFieldPath = fieldProps.fieldPath
 
   Object.keys(reactiveProps).forEach((propName) => {
     const resolver = reactiveProps[propName]
 
-    makeObservable(resolver, resolverArgs, {
+    makeObservable(resolver, createRuleResolverArgs({ fieldProps, fields, form }), {
       initialCall: true,
-      subscribe({ nextTargetRecord, shouldValidate = true }) {
-        const { fields } = form.state
-        const { fieldPath: targetFieldPath } = nextTargetRecord
-        const prevSubscriberState = R.path(subscriberFieldPath, fields)
+      // nextTargetRecord может быть не передан на initialCall — делаем дефолт-аргументы
+      subscribe({ nextTargetRecord, shouldValidate = true } = {}) {
+        const currFields = form.state.fields || {}
 
-        const nextFields = R.assocPath(
-          targetFieldPath,
-          nextTargetRecord,
-          fields,
-        )
+        // Текущая запись подписчика из state или исходная (fallback)
+        const prevSubscriber = Array.isArray(subscriberFieldPath) ? R.path(subscriberFieldPath, currFields) : null
+        const baseSubscriber = prevSubscriber || fieldProps
 
+        // Если есть целевое поле-источник, временно «вшиваем» его в снапшот полей
+        const targetPath = nextTargetRecord && nextTargetRecord.fieldPath
+        const fieldsForResolver = Array.isArray(targetPath)
+          ? R.assocPath(targetPath, nextTargetRecord, currFields)
+          : currFields
+
+        // Считаем следующее значение реактивного пропса на актуальном снапшоте
         const nextResolverArgs = createRuleResolverArgs({
-          fieldProps,
-          fields: nextFields,
+          fieldProps: baseSubscriber,
+          fields: fieldsForResolver,
           form,
         })
 
-        /**
-         * Get the next reactive prop value by invoking the same resolver
-         * with the updated arguments.
-         */
-        const nextPropValue = dispatch(resolver, nextResolverArgs)
+        const raw = dispatch(resolver, nextResolverArgs)
 
-        /* Set the next value of reactive prop on the respective field record */
+        // Нормализация типов
+        const nextPropValue = propName === 'required' ? Boolean(raw) : raw
+
+        // Пересобираем ПОЛНУЮ запись подписчика
         const nextSubscriberState = R.compose(
           recordUtils.resetValidityState,
           recordUtils.resetValidationState,
           R.assoc(propName, nextPropValue),
-        )(prevSubscriberState)
+        )(baseSubscriber)
 
-        const fieldsWithSubscriber = R.assocPath(
-          subscriberFieldPath,
-          nextSubscriberState,
-          nextFields,
-        )
+        // Кладём запись подписчика обратно в снапшот
+        const fieldsWithSubscriber = Array.isArray(subscriberFieldPath)
+          ? R.assocPath(subscriberFieldPath, nextSubscriberState, fieldsForResolver)
+          : fieldsForResolver
 
+        // Обновляем/валидируем именно полноценной записью (никаких «голых» патчей)
         if (shouldValidate) {
           return form.validateField({
-            /**
-             * Forcing validation that originates from reactive subscription
-             * shouldn't be force if a field's validity and validation state are reset,
-             * and the reset field state is being validated.
-             * @see https://github.com/kettanaito/react-advanced-form/issues/344
-             */
-            // force: true,
             forceProps: true,
             fieldProps: nextSubscriberState,
             fields: fieldsWithSubscriber,
